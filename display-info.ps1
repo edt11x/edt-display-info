@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 # display-info.ps1 — show display/session environment at a glance (Windows 11)
 # PowerShell equivalent of the display-info bash script
 
@@ -378,7 +378,7 @@ if ($nvidiaVcs -or (cmd_or 'nvidia-smi')) {
             foreach ($line in $smiTherm) {
                 $f = $line -split ',\s*'
                 if ($f.Count -ge 6) {
-                    row "    GPU $($f[0])" "temp $($f[1])°C  fan $($f[2].PadRight(6))  draw $($f[3].PadRight(8))  limit $($f[4].PadRight(8))  mgmt $($f[5])"
+                    row "    GPU $($f[0])" "temp $($f[1]) C  fan $($f[2].PadRight(6))  draw $($f[3].PadRight(8))  limit $($f[4].PadRight(8))  mgmt $($f[5])"
                 }
             }
         } catch {}
@@ -412,7 +412,7 @@ if ($nvidiaVcs -or (cmd_or 'nvidia-smi')) {
             }
         } catch {}
     } else {
-        Write-Host "  ${WARN}nvidia-smi not found — install NVIDIA drivers or CUDA toolkit for full details${RST}"
+        Write-Host "  ${WARN}nvidia-smi not found - install NVIDIA drivers or CUDA toolkit for full details${RST}"
     }
 }
 
