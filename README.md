@@ -11,10 +11,71 @@ A Linux command-line utility that presents a concise, colour-coded summary of yo
 | **loginctl Session** | Session ID, seat, TTY, display, remote flag, service, type, class, state |
 | **Display Server** | `$DISPLAY`, `$WAYLAND_DISPLAY`, X server info, window manager / compositor process |
 | **Screen / Resolution** | Primary resolution, all connected outputs with offsets, DPI — auto-detects X11 (`xrandr`) or Wayland (`wlr-randr` / `kscreen-doctor` / `/sys/class/drm`) |
-| **Graphics Hardware** | OpenGL renderer & version (`glxinfo`), PCI display devices (`lspci`), NVIDIA details (`nvidia-smi`) |
+| **Graphics Hardware & Mesa Capabilities** | Full Mesa/GL identity, profile versions, capability checklist, memory info, extension counts, PCI devices, optional NVIDIA/Vulkan/VA-API/VDPAU details |
 | **Miscellaneous** | User/UID, hostname, kernel version, locale, D-Bus session address, uptime |
 
 Missing or unknown values are highlighted in red so they stand out immediately.
+
+## Graphics Hardware & Mesa Capabilities
+
+This section provides a deep dive into the GPU and Mesa stack:
+
+### Identity
+- GL vendor, renderer string, Mesa version
+- Hardware acceleration status — green if GPU-backed, red if software (llvmpipe/softpipe)
+- Direct rendering flag
+
+### OpenGL Profile Versions
+- Core profile version
+- Compatibility profile version
+- OpenGL ES version
+- GLSL (shading language) version
+- GLSL ES version
+- GLX version
+
+### Mesa `GLX_MESA_query_renderer`
+Raw data from Mesa's renderer query extension:
+- Device name, Mesa version
+- Video memory (MB), unified memory flag
+- Preferred profile, max core/compat GL, max GLES 1/2/3 versions
+
+### Video Memory
+Available and total memory from `GL_NVX_gpu_memory_info`.
+
+### Extension Counts
+Total GL extensions and GLX extensions supported.
+
+### Capability Checklist
+A ✔/✘ checklist of 20 notable GL capabilities:
+
+| Capability | Extension(s) checked |
+|---|---|
+| Geometry shaders | `GL_ARB_geometry_shader4`, `GL_EXT_geometry_shader` |
+| Tessellation | `GL_ARB_tessellation_shader` |
+| Compute shaders | `GL_ARB_compute_shader` |
+| Shader storage (SSBO) | `GL_ARB_shader_storage_buffer_object` |
+| 64-bit float (FP64) | `GL_ARB_gpu_shader_fp64` |
+| Half-float vertex | `GL_ARB_half_float_vertex` |
+| Bindless textures | `GL_ARB_bindless_texture` |
+| Sparse textures | `GL_ARB_sparse_texture` |
+| Multi-draw indirect | `GL_ARB_multi_draw_indirect` |
+| Instanced drawing | `GL_ARB_instanced_arrays`, `GL_ARB_draw_instanced` |
+| Transform feedback | `GL_ARB_transform_feedback2` |
+| Conditional render | `GL_NV_conditional_render`, `GL_ARB_conditional_render_inverted` |
+| Occlusion queries | `GL_ARB_occlusion_query` |
+| Timer queries | `GL_ARB_timer_query`, `GL_EXT_timer_query` |
+| Anisotropic filtering | `GL_EXT_texture_filter_anisotropic`, `GL_ARB_texture_filter_anisotropic` |
+| sRGB framebuffer | `GL_ARB_framebuffer_sRGB`, `GL_EXT_framebuffer_sRGB` |
+| Multisample (MSAA) | `GL_ARB_multisample` |
+| Sync objects | `GL_ARB_sync` |
+| Debug output | `GL_ARB_debug_output`, `GL_KHR_debug` |
+| Direct state access | `GL_ARB_direct_state_access` |
+
+### Optional — extra blocks appear when tools are installed
+- **`nvidia-smi`** — NVIDIA GPU name, driver version, VRAM, temperature, utilization
+- **`vulkaninfo`** — Vulkan device summary (API version, driver, device type)
+- **`vainfo`** — VA-API driver and supported hardware video decode/encode profiles
+- **`vdpauinfo`** — VDPAU implementation and version
 
 ## Requirements
 
@@ -28,11 +89,14 @@ Missing or unknown values are highlighted in red so they stand out immediately.
 |---|---|
 | `xrandr` | X11 resolution & connected outputs |
 | `xdpyinfo` | X server version, DPI |
-| `glxinfo` | OpenGL renderer & version |
-| `lspci` (pciutils) | PCI GPU info |
+| `glxinfo` (mesa-demos) | Full Mesa/GL capability report |
+| `lspci` (pciutils) | PCI GPU identification |
 | `wlr-randr` | Wayland outputs (wlroots compositors) |
 | `kscreen-doctor` | Wayland outputs (KDE Plasma) |
 | `nvidia-smi` | NVIDIA GPU details |
+| `vulkaninfo` (vulkan-tools) | Vulkan device summary |
+| `vainfo` (libva-utils) | VA-API video acceleration profiles |
+| `vdpauinfo` | VDPAU video acceleration info |
 
 ## Installation
 
@@ -93,6 +157,63 @@ No arguments, no options — just run it.
 ──────────────────────────────────────────────────────────────
   Primary resolution          1920x1080
   DPI                         96x96
+
+──────────────────────────────────────────────────────────────
+  Graphics Hardware & Mesa Capabilities
+──────────────────────────────────────────────────────────────
+  GL vendor                   Mesa
+  GL renderer                 llvmpipe (LLVM 21.1.8, 256 bits)
+  Mesa version                Mesa 25.3.6
+  Hardware accelerated        no (software/llvmpipe)  direct rendering: Yes
+
+  OpenGL profile versions:
+    Core profile              4.5 (Core Profile) Mesa 25.3.6
+    Compat profile            4.5 (Compatibility Profile) Mesa 25.3.6
+    OpenGL ES                 OpenGL ES 3.2 Mesa 25.3.6
+    GLSL version              4.50
+    GLSL ES version           OpenGL ES GLSL ES 3.20
+    GLX version               1.4
+
+  Mesa GLX_MESA_query_renderer:
+    Vendor                    Mesa (0xffffffff)
+    Device                    llvmpipe (LLVM 21.1.8, 256 bits) (0xffffffff)
+    Mesa version              25.3.6
+    Video memory              8664MB
+    Unified memory            yes
+    Preferred profile         core (0x1)
+    Max core GL               4.5
+    Max compat GL             4.5
+    Max GLES 1                1.1
+    Max GLES 2/3              3.2
+
+  Video memory (GL_NVX_gpu_memory_info):
+    Total available           8664 MB
+    Currently avail.          0 MB
+
+  GL extensions total         316
+  GLX extensions              36
+
+  Notable capabilities (from GL extensions):
+    ✘  Geometry shaders
+    ✔  Tessellation
+    ✔  Compute shaders
+    ✔  Shader storage (SSBO)
+    ✔  64-bit float (FP64)
+    ✔  Half-float vertex
+    ✘  Bindless textures
+    ✘  Sparse textures
+    ✔  Multi-draw indirect
+    ✘  Instanced drawing
+    ✔  Transform feedback
+    ✘  Conditional render
+    ✔  Occlusion queries
+    ✘  Timer queries
+    ✘  Anisotropic filter
+    ✘  sRGB framebuffer
+    ✔  Multisample (MSAA)
+    ✔  Sync objects
+    ✘  Debug output
+    ✔  Direct state access
 ```
 
 ## License
