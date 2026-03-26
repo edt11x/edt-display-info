@@ -371,16 +371,94 @@ elif command -v glxinfo &>/dev/null; then
     row "glxinfo" "available but DISPLAY not set"
 fi
 
-# nvidia-smi if present
-if command -v nvidia-smi &>/dev/null; then
+# NVIDIA — detect card via lspci/sysfs first, then try nvidia-smi
+NVIDIA_PCI=$(lspci 2>/dev/null | grep -i nvidia | grep -iE 'vga|3d|display' | head -1)
+NVIDIA_PROC=$([[ -r /proc/driver/nvidia/version ]] && echo yes)
+if [[ -n "$NVIDIA_PCI" || -n "$NVIDIA_PROC" ]]; then
     echo
-    printf "  ${C_DIM}NVIDIA (nvidia-smi):${RST}\n"
-    nvidia-smi --query-gpu=name,driver_version,memory.total,temperature.gpu,utilization.gpu \
-               --format=csv,noheader 2>/dev/null \
-    | while IFS=',' read -r name drv mem temp util; do
-        printf "  %-30s  driver %-10s  mem %-8s  %s°C  gpu %s\n" \
-               "${name# }" "${drv# }" "${mem# }" "${temp# }" "${util# }"
-    done
+    printf "  ${C_DIM}NVIDIA GPU detected:${RST}\n"
+    [[ -n "$NVIDIA_PCI" ]] && printf "  %s\n" "$NVIDIA_PCI"
+
+    if [[ -r /proc/driver/nvidia/version ]]; then
+        printf "  ${C_KEY}%-28s${RST}${C_VAL}%s${RST}\n" \
+            "  Kernel driver" "$(head -1 /proc/driver/nvidia/version)"
+    fi
+
+    if command -v nvidia-smi &>/dev/null; then
+        echo
+        printf "  ${C_DIM}nvidia-smi:${RST}\n"
+
+        # Per-GPU summary row
+        nvidia-smi \
+            --query-gpu=index,name,driver_version,vbios_version,pci.bus_id \
+            --format=csv,noheader 2>/dev/null \
+        | while IFS=',' read -r idx name drv vbios pci; do
+            printf "  ${C_KEY}GPU %-3s${RST}  ${C_VAL}%s${RST}\n" "${idx# }" "${name# }"
+            printf "  ${C_KEY}%-28s${RST}${C_VAL}%s${RST}\n" "    Driver version"  "${drv# }"
+            printf "  ${C_KEY}%-28s${RST}${C_VAL}%s${RST}\n" "    VBIOS version"   "${vbios# }"
+            printf "  ${C_KEY}%-28s${RST}${C_VAL}%s${RST}\n" "    PCI bus ID"      "${pci# }"
+        done
+
+        # Memory
+        echo
+        printf "  ${C_DIM}  Memory:${RST}\n"
+        nvidia-smi \
+            --query-gpu=index,memory.total,memory.used,memory.free \
+            --format=csv,noheader 2>/dev/null \
+        | while IFS=',' read -r idx total used free; do
+            printf "  ${C_KEY}%-28s${RST}${C_VAL}total %-10s  used %-10s  free %s${RST}\n" \
+                "    GPU ${idx# }" "${total# }" "${used# }" "${free# }"
+        done
+
+        # Clocks
+        echo
+        printf "  ${C_DIM}  Clocks:${RST}\n"
+        nvidia-smi \
+            --query-gpu=index,clocks.gr,clocks.mem,clocks.sm,clocks.video \
+            --format=csv,noheader 2>/dev/null \
+        | while IFS=',' read -r idx gr mem sm vid; do
+            printf "  ${C_KEY}%-28s${RST}${C_VAL}core %-8s  mem %-8s  sm %-8s  video %s${RST}\n" \
+                "    GPU ${idx# }" "${gr# }" "${mem# }" "${sm# }" "${vid# }"
+        done
+
+        # Thermals & power
+        echo
+        printf "  ${C_DIM}  Thermals & power:${RST}\n"
+        nvidia-smi \
+            --query-gpu=index,temperature.gpu,fan.speed,power.draw,power.limit,power.management \
+            --format=csv,noheader 2>/dev/null \
+        | while IFS=',' read -r idx temp fan pdraw plimit pmgmt; do
+            printf "  ${C_KEY}%-28s${RST}${C_VAL}temp %-6s  fan %-6s  draw %-8s  limit %-8s  mgmt %s${RST}\n" \
+                "    GPU ${idx# }" "${temp# }°C" "${fan# }" "${pdraw# }" "${plimit# }" "${pmgmt# }"
+        done
+
+        # Utilisation
+        echo
+        printf "  ${C_DIM}  Utilisation:${RST}\n"
+        nvidia-smi \
+            --query-gpu=index,utilization.gpu,utilization.memory,utilization.encoder,utilization.decoder \
+            --format=csv,noheader 2>/dev/null \
+        | while IFS=',' read -r idx gpu mem enc dec; do
+            printf "  ${C_KEY}%-28s${RST}${C_VAL}gpu %-6s  mem %-6s  enc %-6s  dec %s${RST}\n" \
+                "    GPU ${idx# }" "${gpu# }" "${mem# }" "${enc# }" "${dec# }"
+        done
+
+        # Compute / perf state / ECC
+        echo
+        printf "  ${C_DIM}  Capabilities & state:${RST}\n"
+        nvidia-smi \
+            --query-gpu=index,compute_mode,pstate,ecc.mode.current,cuda_version \
+            --format=csv,noheader 2>/dev/null \
+        | while IFS=',' read -r idx cmode pstate ecc cuda; do
+            printf "  ${C_KEY}%-28s${RST}${C_VAL}%s${RST}\n" "    Compute mode"  "${cmode# }"
+            printf "  ${C_KEY}%-28s${RST}${C_VAL}%s${RST}\n" "    Perf state"    "${pstate# }"
+            printf "  ${C_KEY}%-28s${RST}${C_VAL}%s${RST}\n" "    ECC mode"      "${ecc# }"
+            printf "  ${C_KEY}%-28s${RST}${C_VAL}%s${RST}\n" "    CUDA version"  "${cuda# }"
+        done
+
+    else
+        printf "  ${C_WARN}nvidia-smi not found — install nvidia-utils for full details${RST}\n"
+    fi
 fi
 
 # Vulkan info summary

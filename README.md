@@ -71,8 +71,23 @@ A ✔/✘ checklist of 20 notable GL capabilities:
 | Debug output | `GL_ARB_debug_output`, `GL_KHR_debug` |
 | Direct state access | `GL_ARB_direct_state_access` |
 
+### NVIDIA GPU (auto-detected)
+If an NVIDIA card is found via `lspci` or `/proc/driver/nvidia/version`, a dedicated block
+is shown automatically. If `nvidia-smi` is installed the following sub-sections are added:
+
+| Sub-section | Fields |
+|---|---|
+| **Identity** | PCI device line, kernel driver version (`/proc/driver/nvidia/version`) |
+| **Per-GPU summary** | Name, driver version, VBIOS version, PCI bus ID |
+| **Memory** | Total, used, free VRAM |
+| **Clocks** | Core (graphics), memory, SM, video clocks |
+| **Thermals & power** | GPU temperature, fan speed, power draw, power limit, power management state |
+| **Utilisation** | GPU, memory, encoder, decoder utilisation |
+| **Capabilities & state** | Compute mode, performance state (P0–P12), ECC mode, CUDA version |
+
+If `nvidia-smi` is not installed a message is printed prompting installation of `nvidia-utils`.
+
 ### Optional — extra blocks appear when tools are installed
-- **`nvidia-smi`** — NVIDIA GPU name, driver version, VRAM, temperature, utilization
 - **`vulkaninfo`** — Vulkan device summary (API version, driver, device type)
 - **`vainfo`** — VA-API driver and supported hardware video decode/encode profiles
 - **`vdpauinfo`** — VDPAU implementation and version
@@ -93,7 +108,7 @@ A ✔/✘ checklist of 20 notable GL capabilities:
 | `lspci` (pciutils) | PCI GPU identification |
 | `wlr-randr` | Wayland outputs (wlroots compositors) |
 | `kscreen-doctor` | Wayland outputs (KDE Plasma) |
-| `nvidia-smi` | NVIDIA GPU details |
+| `nvidia-smi` (nvidia-utils) | NVIDIA GPU details (memory, clocks, thermals, utilisation, CUDA version) |
 | `vulkaninfo` (vulkan-tools) | Vulkan device summary |
 | `vainfo` (libva-utils) | VA-API video acceleration profiles |
 | `vdpauinfo` | VDPAU video acceleration info |
