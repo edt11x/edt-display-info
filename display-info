@@ -1,0 +1,274 @@
+#!/usr/bin/env bash
+# display-info — show display/session environment at a glance
+
+# ── colours & styles ──────────────────────────────────────────────────────────
+BOLD='\033[1m'
+DIM='\033[2m'
+RST='\033[0m'
+C_HEAD='\033[1;36m'   # cyan bold    – section headers
+C_KEY='\033[0;33m'    # yellow       – labels
+C_VAL='\033[0;97m'    # bright white – values
+C_OK='\033[0;32m'     # green        – good/present
+C_WARN='\033[0;31m'   # red          – missing/unknown
+C_DIM='\033[2;37m'    # dim grey     – secondary info
+
+# ── helpers ───────────────────────────────────────────────────────────────────
+WIDTH=62
+
+hr() { printf "${DIM}%${WIDTH}s${RST}\n" | tr ' ' '─'; }
+
+header() {
+    echo
+    hr
+    printf "  ${C_HEAD}%-${WIDTH}s${RST}\n" "$1"
+    hr
+}
+
+row() {                          # row "Label" "value" ["extra dim text"]
+    local key="$1" val="$2" extra="${3:-}"
+    if [[ -z "$val" || "$val" == "unknown" || "$val" == "not found" ]]; then
+        printf "  ${C_KEY}%-28s${RST}${C_WARN}%s${RST}\n" "$key" "${val:-not found}"
+    else
+        printf "  ${C_KEY}%-28s${RST}${C_VAL}%s${RST}" "$key" "$val"
+        [[ -n "$extra" ]] && printf "  ${C_DIM}%s${RST}" "$extra"
+        echo
+    fi
+}
+
+cmd_or() { command -v "$1" &>/dev/null && "$@" 2>/dev/null || echo ""; }
+
+# ── title ─────────────────────────────────────────────────────────────────────
+echo
+printf "${C_HEAD}${BOLD}%*s${RST}\n" $(( (WIDTH + 20) / 2 )) "▐ display-info ▌"
+echo
+
+# ── 1. desktop / session environment ─────────────────────────────────────────
+header "Desktop Environment & Session"
+
+# DE detection: env vars first, then running processes
+detect_de() {
+    local de="${XDG_CURRENT_DESKTOP:-${DESKTOP_SESSION:-}}"
+    if [[ -n "$de" ]]; then
+        echo "$de"
+        return
+    fi
+    for proc in gnome-shell plasmashell xfce4-session lxsession lxqt-session \
+                mate-session cinnamon-session budgie-panel pantheon-files \
+                enlightenment dde-desktop; do
+        if pgrep -x "$proc" &>/dev/null; then
+            case "$proc" in
+                gnome-shell)       echo "GNOME" ;;
+                plasmashell)       echo "KDE Plasma" ;;
+                xfce4-session)     echo "XFCE" ;;
+                lxsession)         echo "LXDE" ;;
+                lxqt-session)      echo "LXQt" ;;
+                mate-session)      echo "MATE" ;;
+                cinnamon-session)  echo "Cinnamon" ;;
+                budgie-panel)      echo "Budgie" ;;
+                pantheon-files)    echo "Pantheon (Elementary)" ;;
+                enlightenment)     echo "Enlightenment" ;;
+                dde-desktop)       echo "Deepin DDE" ;;
+            esac
+            return
+        fi
+    done
+    echo "unknown"
+}
+
+DE=$(detect_de)
+row "Desktop environment" "$DE"
+row "XDG_CURRENT_DESKTOP" "${XDG_CURRENT_DESKTOP:-not set}"
+row "DESKTOP_SESSION" "${DESKTOP_SESSION:-not set}"
+row "XDG_SESSION_TYPE" "${XDG_SESSION_TYPE:-not set}"
+row "XDG_SESSION_CLASS" "${XDG_SESSION_CLASS:-not set}"
+
+# ── 2. display manager ────────────────────────────────────────────────────────
+header "Display Manager"
+
+# /etc/X11/default-display-manager
+if [[ -r /etc/X11/default-display-manager ]]; then
+    DM_PATH=$(cat /etc/X11/default-display-manager)
+    DM_NAME=$(basename "$DM_PATH")
+    row "/etc/X11/default-display-manager" "$DM_NAME" "($DM_PATH)"
+else
+    row "/etc/X11/default-display-manager" "not found / unreadable"
+fi
+
+# systemd default display-manager service symlink
+if [[ -L /etc/systemd/system/display-manager.service ]]; then
+    DM_SVC=$(basename "$(readlink /etc/systemd/system/display-manager.service)" .service)
+    row "systemd display-manager.service" "$DM_SVC"
+else
+    row "systemd display-manager.service" "not found"
+fi
+
+# running DM process
+detect_dm_process() {
+    for dm in gdm gdm3 lightdm sddm lxdm xdm slim nodm greetd wdm; do
+        if pgrep -x "$dm" &>/dev/null || pgrep -x "${dm}d" &>/dev/null; then
+            echo "$dm"; return
+        fi
+    done
+    echo ""
+}
+DM_PROC=$(detect_dm_process)
+row "Running DM process" "${DM_PROC:-not detected}"
+
+# ── 3. loginctl session info ──────────────────────────────────────────────────
+header "loginctl Session Info"
+
+if command -v loginctl &>/dev/null; then
+    SESSION_ID=$(loginctl show-user "$USER" --property=Sessions --value 2>/dev/null \
+                 | tr ' ' '\n' | head -1)
+    if [[ -n "$SESSION_ID" ]]; then
+        row "Session ID" "$SESSION_ID"
+        while IFS='=' read -r k v; do
+            v="${v//\"/}"
+            case "$k" in
+                Type)    row "  Type" "$v" ;;
+                Class)   row "  Class" "$v" ;;
+                State)   row "  State" "$v" ;;
+                Seat)    row "  Seat" "$v" ;;
+                TTY)     row "  TTY" "$v" ;;
+                Display) row "  Display" "$v" ;;
+                Remote)  row "  Remote" "$v" ;;
+                Service) row "  Service" "$v" ;;
+            esac
+        done < <(loginctl show-session "$SESSION_ID" 2>/dev/null)
+    else
+        # Try listing all sessions for this user
+        printf "  ${C_DIM}Sessions for ${USER}:${RST}\n"
+        loginctl list-sessions 2>/dev/null \
+            | awk -v u="$USER" 'NR==1 || $4==u' \
+            | sed 's/^/  /'
+    fi
+else
+    row "loginctl" "not available"
+fi
+
+# ── 4. display server & variables ────────────────────────────────────────────
+header "Display Server"
+
+row "DISPLAY" "${DISPLAY:-not set}"
+row "WAYLAND_DISPLAY" "${WAYLAND_DISPLAY:-not set}"
+
+# X server version
+if [[ -n "$DISPLAY" ]] && command -v xdpyinfo &>/dev/null; then
+    XVER=$(xdpyinfo 2>/dev/null | awk '/^X.org version:/{print $NF; exit}
+                                        /^X11 protocol version/{print "protocol",$NF; exit}')
+    row "X server info" "${XVER:-running (xdpyinfo found)}"
+elif [[ -n "$WAYLAND_DISPLAY" ]]; then
+    # compositor info via wayland
+    if command -v weston-info &>/dev/null; then
+        WCOMP=$(weston-info 2>/dev/null | awk '/compositor/{print;exit}')
+        row "Wayland compositor info" "${WCOMP:-wayland active}"
+    else
+        row "Wayland compositor" "active (weston-info not installed)"
+    fi
+fi
+
+# Compositor process
+for comp in kwin_wayland kwin_x11 mutter muffin xfwm4 openbox i3 sway \
+            hyprland river wayfire labwc picom compton; do
+    if pgrep -x "$comp" &>/dev/null; then
+        row "Window manager/compositor" "$comp"
+        break
+    fi
+done
+
+# ── 5. screen resolution & monitors ──────────────────────────────────────────
+header "Screen / Resolution"
+
+if [[ -n "$DISPLAY" ]] && command -v xrandr &>/dev/null; then
+    # Primary resolution — use geometry from the "connected" line (e.g. 1920x1080+0+0)
+    PRIMARY=$(xrandr --current 2>/dev/null \
+              | awk '/connected primary/{for(i=1;i<=NF;i++) if($i~/^[0-9]+x[0-9]+\+/) {split($i,a,"+"); print a[1]; exit}}')
+    [[ -z "$PRIMARY" ]] && PRIMARY=$(xrandr --current 2>/dev/null \
+              | awk '/ connected /{for(i=1;i<=NF;i++) if($i~/^[0-9]+x[0-9]+\+/) {split($i,a,"+"); print a[1]; exit}}')
+    row "Primary resolution" "${PRIMARY:-unknown}"
+
+    # All connected outputs
+    echo
+    printf "  ${C_DIM}Connected outputs:${RST}\n"
+    xrandr --current 2>/dev/null | awk '
+        / connected/ {
+            out = $1
+            res = "off"
+            for (i=1;i<=NF;i++) if ($i ~ /^[0-9]+x[0-9]+\+/) { split($i,a,"+"); res=a[1]"@+"a[2]","a[3] }
+            printf "  %-18s  %s\n", out, res
+        }'
+
+    # DPI
+    DPI=$(xdpyinfo 2>/dev/null | awk '/resolution/{print $2; exit}')
+    [[ -n "$DPI" ]] && row "DPI" "$DPI"
+
+elif command -v wlr-randr &>/dev/null; then
+    echo
+    printf "  ${C_DIM}Wayland outputs (wlr-randr):${RST}\n"
+    wlr-randr 2>/dev/null | grep -E '^\S|  \S' | sed 's/^/  /'
+
+elif command -v kscreen-doctor &>/dev/null; then
+    echo
+    printf "  ${C_DIM}Wayland outputs (kscreen-doctor):${RST}\n"
+    kscreen-doctor -o 2>/dev/null | grep -E 'Output|Resolution|enabled' | sed 's/^/  /'
+
+elif [[ -r /sys/class/drm ]]; then
+    echo
+    printf "  ${C_DIM}DRM outputs (/sys/class/drm):${RST}\n"
+    for conn in /sys/class/drm/card*-*; do
+        name=$(basename "$conn")
+        status=$(cat "$conn/status" 2>/dev/null)
+        modes=$(head -1 "$conn/modes" 2>/dev/null)
+        printf "  %-22s  %-14s  %s\n" "$name" "${status:-?}" "${modes:-}"
+    done
+fi
+
+# ── 6. GPU / graphics ─────────────────────────────────────────────────────────
+header "Graphics Hardware"
+
+if command -v glxinfo &>/dev/null && [[ -n "$DISPLAY" ]]; then
+    RENDERER=$(glxinfo 2>/dev/null | awk '/OpenGL renderer/{print substr($0, index($0,$4)); exit}')
+    GL_VER=$(glxinfo 2>/dev/null | awk '/OpenGL version/{print substr($0, index($0,$4)); exit}')
+    row "OpenGL renderer" "${RENDERER:-unknown}"
+    row "OpenGL version" "${GL_VER:-unknown}"
+elif command -v glxinfo &>/dev/null; then
+    row "OpenGL renderer" "glxinfo available but no DISPLAY"
+fi
+
+# lspci GPU entries
+if command -v lspci &>/dev/null; then
+    echo
+    printf "  ${C_DIM}PCI display devices:${RST}\n"
+    lspci 2>/dev/null | grep -iE 'vga|3d|display|gpu' | while IFS= read -r line; do
+        printf "  %s\n" "$line"
+    done
+fi
+
+# nvidia-smi if present
+if command -v nvidia-smi &>/dev/null; then
+    echo
+    printf "  ${C_DIM}NVIDIA:${RST}\n"
+    nvidia-smi --query-gpu=name,driver_version,memory.total \
+               --format=csv,noheader 2>/dev/null \
+    | while IFS=',' read -r name drv mem; do
+        printf "  %-30s  driver %-10s  %s\n" "${name# }" "${drv# }" "${mem# }"
+    done
+fi
+
+# ── 7. misc useful vars ────────────────────────────────────────────────────────
+header "Miscellaneous"
+
+row "USER / UID" "${USER} / $(id -u)"
+row "Hostname" "$(hostname 2>/dev/null)"
+row "Kernel" "$(uname -r 2>/dev/null)"
+row "LANG / locale" "${LANG:-not set}"
+row "DBUS_SESSION_BUS_ADDRESS" "${DBUS_SESSION_BUS_ADDRESS:+set ($(echo "$DBUS_SESSION_BUS_ADDRESS" | cut -c1-30)…)}"
+[[ -z "$DBUS_SESSION_BUS_ADDRESS" ]] && row "DBUS_SESSION_BUS_ADDRESS" "not set"
+
+# uptime
+UP=$(uptime -p 2>/dev/null)
+row "Uptime" "${UP:-$(uptime 2>/dev/null)}"
+
+echo
+hr
+echo
