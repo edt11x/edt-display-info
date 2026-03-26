@@ -134,8 +134,9 @@ If `nvidia-smi` is not installed a message is printed prompting installation of 
 
 ### Windows 11 (`display-info.ps1`)
 
-- PowerShell 5.1+ (built into Windows 10/11)
+- PowerShell 5.1+ (built into Windows 10/11 — no upgrade needed)
 - No additional dependencies required
+- Script uses CRLF line endings (enforced via `.gitattributes`)
 
 **Optional** — richer output when these are present:
 
@@ -174,6 +175,11 @@ Set-ExecutionPolicy RemoteSigned -Scope CurrentUser
 # Run
 .\display-info.ps1
 ```
+
+> `display-info.ps1` is stored with CRLF (DOS) line endings, as required by
+> Windows tools. A `.gitattributes` file enforces this so the endings are
+> preserved correctly on every `git checkout`, regardless of the cloning
+> machine's `core.autocrlf` setting.
 
 ## Usage
 
