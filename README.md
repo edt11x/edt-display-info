@@ -1,8 +1,13 @@
 # display-info
 
-A Linux command-line utility that presents a concise, colour-coded summary of your display and session environment.
+A cross-platform utility that presents a concise, colour-coded summary of your display and session environment.
+
+- **Linux** — `display-info` (bash script)
+- **Windows 11** — `display-info.ps1` (PowerShell script)
 
 ## What it shows
+
+### Linux (`display-info`)
 
 | Section | Details |
 |---|---|
@@ -13,6 +18,18 @@ A Linux command-line utility that presents a concise, colour-coded summary of yo
 | **Screen / Resolution** | Primary resolution, all connected outputs with offsets, DPI — auto-detects X11 (`xrandr`) or Wayland (`wlr-randr` / `kscreen-doctor` / `/sys/class/drm`) |
 | **Graphics Hardware & Mesa Capabilities** | Full Mesa/GL identity, profile versions, capability checklist, memory info, extension counts, PCI devices, optional NVIDIA/Vulkan/VA-API/VDPAU details |
 | **Miscellaneous** | User/UID, hostname, kernel version, locale, D-Bus session address, uptime |
+
+### Windows 11 (`display-info.ps1`)
+
+| Section | Details |
+|---|---|
+| **Desktop Environment & Session** | OS name/version/build/architecture, session name (Console vs RDP) |
+| **Login & Winlogon** | `winlogon.exe` / `dwm.exe` status, DWM service, Aero composition, HDR output state, last logon type |
+| **Session Info** | Username, domain, session ID, active sessions via `qwinsta` |
+| **Display Compositor (DWM)** | Desktop Window Manager status, `dwmapi.dll` version, composition and HDR flags |
+| **Screen / Resolution** | Current resolution, refresh rate, bits per pixel, all connected monitors with physical IDs (manufacturer/name/serial), logical DPI |
+| **Graphics Hardware & DirectX** | `Win32_VideoController` (name, driver, VRAM, PNP ID), `dxdiag` report (DirectX version, feature levels, D3D9/10/11/12 DDI, shader versions), optional NVIDIA/Vulkan details |
+| **Miscellaneous** | User + SID, hostname, admin status, PowerShell/CLR versions, locale, timezone, uptime, relevant environment variables |
 
 Missing or unknown values are highlighted in red so they stand out immediately.
 
@@ -94,6 +111,8 @@ If `nvidia-smi` is not installed a message is printed prompting installation of 
 
 ## Requirements
 
+### Linux (`display-info`)
+
 - bash 4+
 - Standard coreutils (`awk`, `grep`, …)
 - `loginctl` (systemd)
@@ -113,7 +132,22 @@ If `nvidia-smi` is not installed a message is printed prompting installation of 
 | `vainfo` (libva-utils) | VA-API video acceleration profiles |
 | `vdpauinfo` | VDPAU video acceleration info |
 
+### Windows 11 (`display-info.ps1`)
+
+- PowerShell 5.1+ (built into Windows 10/11)
+- No additional dependencies required
+
+**Optional** — richer output when these are present:
+
+| Tool | Extra info |
+|---|---|
+| `nvidia-smi` | Full NVIDIA GPU report (memory, clocks, thermals, utilisation, CUDA version) |
+| `vulkaninfo` (Vulkan SDK) | Vulkan device summary |
+| `dxdiag` | DirectX version, feature levels, shader versions (built into Windows) |
+
 ## Installation
+
+### Linux
 
 ```bash
 # Clone
@@ -127,10 +161,30 @@ sudo cp display-info /usr/local/bin/
 ./display-info
 ```
 
+### Windows 11
+
+```powershell
+# Clone
+git clone https://github.com/edt11x/edt-display-info.git
+cd edt-display-info
+
+# Allow running local scripts (once, if not already set)
+Set-ExecutionPolicy RemoteSigned -Scope CurrentUser
+
+# Run
+.\display-info.ps1
+```
+
 ## Usage
 
+### Linux
 ```
 display-info
+```
+
+### Windows 11
+```powershell
+.\display-info.ps1
 ```
 
 No arguments, no options — just run it.
