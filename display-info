@@ -223,36 +223,190 @@ elif [[ -r /sys/class/drm ]]; then
     done
 fi
 
-# ── 6. GPU / graphics ─────────────────────────────────────────────────────────
-header "Graphics Hardware"
-
-if command -v glxinfo &>/dev/null && [[ -n "$DISPLAY" ]]; then
-    RENDERER=$(glxinfo 2>/dev/null | awk '/OpenGL renderer/{print substr($0, index($0,$4)); exit}')
-    GL_VER=$(glxinfo 2>/dev/null | awk '/OpenGL version/{print substr($0, index($0,$4)); exit}')
-    row "OpenGL renderer" "${RENDERER:-unknown}"
-    row "OpenGL version" "${GL_VER:-unknown}"
-elif command -v glxinfo &>/dev/null; then
-    row "OpenGL renderer" "glxinfo available but no DISPLAY"
-fi
+# ── 6. GPU / Mesa capabilities ────────────────────────────────────────────────
+header "Graphics Hardware & Mesa Capabilities"
 
 # lspci GPU entries
 if command -v lspci &>/dev/null; then
+    GPU_LINES=$(lspci 2>/dev/null | grep -iE 'vga|3d controller|display controller|gpu')
+    if [[ -n "$GPU_LINES" ]]; then
+        printf "  ${C_DIM}PCI display devices:${RST}\n"
+        while IFS= read -r line; do
+            printf "  %s\n" "$line"
+        done <<< "$GPU_LINES"
+        echo
+    fi
+fi
+
+if command -v glxinfo &>/dev/null && [[ -n "$DISPLAY" ]]; then
+    # Run once and cache
+    GLX=$( glxinfo -B 2>/dev/null )
+    GLX_FULL=$( glxinfo    2>/dev/null )
+
+    # ── identity ──────────────────────────────────────────────────────────────
+    GL_VENDOR=$(   awk '/^OpenGL vendor string:/{   print substr($0,index($0,$4)) }' <<< "$GLX_FULL" | head -1)
+    GL_RENDERER=$( awk '/^OpenGL renderer string:/{  print substr($0,index($0,$4)) }' <<< "$GLX_FULL" | head -1)
+    MESA_VER=$(    awk '/^OpenGL version string:/{   match($0,/Mesa [0-9.]+/); print substr($0,RSTART,RLENGTH) }' <<< "$GLX_FULL" | head -1)
+    MESA_DRIVER=$( awk '/Device:/{                   print substr($0,index($0,$2)) }' <<< "$GLX" | head -1)
+
+    row "GL vendor" "${GL_VENDOR:-unknown}"
+    row "GL renderer" "${GL_RENDERER:-unknown}"
+    row "Mesa version" "${MESA_VER:-unknown}"
+
+    # Hardware-accelerated?  (Accelerated: field from MESA query_renderer)
+    HW_ACCEL=$( awk '/^    Accelerated:/{print $2}' <<< "$GLX" | head -1 )
+    DR=$(        awk '/^direct rendering:/{print $3}' <<< "$GLX_FULL" | head -1 )
+    if [[ "$HW_ACCEL" == "yes" ]]; then
+        printf "  ${C_KEY}%-28s${RST}${C_OK}%s${RST}\n" "Hardware accelerated" "yes  (direct rendering: ${DR:-?})"
+    else
+        printf "  ${C_KEY}%-28s${RST}${C_WARN}%s${RST}\n" "Hardware accelerated" "no (software/llvmpipe)  direct rendering: ${DR:-?}"
+    fi
+
+    # ── profile versions ──────────────────────────────────────────────────────
     echo
-    printf "  ${C_DIM}PCI display devices:${RST}\n"
-    lspci 2>/dev/null | grep -iE 'vga|3d|display|gpu' | while IFS= read -r line; do
-        printf "  %s\n" "$line"
+    printf "  ${C_DIM}OpenGL profile versions:${RST}\n"
+
+    # Each line ends with the value after "string: " — split on ": " and take the rest
+    GL_CORE=$(  awk '/^OpenGL core profile version string:/{  sub(/.*string: /,""); print }' <<< "$GLX_FULL" | head -1)
+    GL_COMPAT=$( awk '/^OpenGL version string:/{               sub(/.*string: /,""); print }' <<< "$GLX_FULL" | head -1)
+    GL_ES=$(    awk '/^OpenGL ES profile version string:/{    sub(/.*string: /,""); print }' <<< "$GLX_FULL" | head -1)
+    GLSL=$(     awk '/^OpenGL shading language version string:/{sub(/.*string: /,""); print }' <<< "$GLX_FULL" | head -1)
+    GLSL_ES=$(  awk '/^OpenGL ES profile shading language/{   sub(/.*string: /,""); print }' <<< "$GLX_FULL" | head -1)
+    GLX_VER=$(  awk '/^GLX version:/{                         print $3 }' <<< "$GLX_FULL" | head -1)
+
+    printf "  ${C_KEY}%-28s${RST}${C_VAL}%s${RST}\n" "  Core profile"    "${GL_CORE:-unknown}"
+    printf "  ${C_KEY}%-28s${RST}${C_VAL}%s${RST}\n" "  Compat profile"  "${GL_COMPAT:-unknown}"
+    printf "  ${C_KEY}%-28s${RST}${C_VAL}%s${RST}\n" "  OpenGL ES"       "${GL_ES:-unknown}"
+    printf "  ${C_KEY}%-28s${RST}${C_VAL}%s${RST}\n" "  GLSL version"    "${GLSL:-unknown}"
+    printf "  ${C_KEY}%-28s${RST}${C_VAL}%s${RST}\n" "  GLSL ES version" "${GLSL_ES:-unknown}"
+    printf "  ${C_KEY}%-28s${RST}${C_VAL}%s${RST}\n" "  GLX version"     "${GLX_VER:-unknown}"
+
+    # ── Mesa query_renderer caps ──────────────────────────────────────────────
+    echo
+    printf "  ${C_DIM}Mesa GLX_MESA_query_renderer:${RST}\n"
+
+    MQR_VENDOR=$(  awk '/^    Vendor:/{           print substr($0,index($0,$2)) }' <<< "$GLX" | head -1)
+    MQR_DEVICE=$(  awk '/^    Device:/{           print substr($0,index($0,$2)) }' <<< "$GLX" | head -1)
+    MQR_VER=$(     awk '/^    Version:/{          print $2 }' <<< "$GLX" | head -1)
+    MQR_VRAM=$(    awk '/^    Video memory:/{     print $3,$4 }' <<< "$GLX" | head -1)
+    MQR_UNIFIED=$( awk '/^    Unified memory:/{   print $3 }' <<< "$GLX" | head -1)
+    MQR_PROFILE=$( awk '/^    Preferred profile:/{print $3,$4 }' <<< "$GLX" | head -1)
+    MQR_MAXCORE=$( awk '/^    Max core profile version:/{  print $5 }' <<< "$GLX" | head -1)
+    MQR_MAXCOMPAT=$(awk '/^    Max compat profile version:/{print $5 }' <<< "$GLX" | head -1)
+    MQR_MAXES1=$(  awk '/^    Max GLES1 profile version:/{  print $5 }' <<< "$GLX" | head -1)
+    MQR_MAXES23=$( awk '/^    Max GLES\[23\] profile version:/{print $5 }' <<< "$GLX" | head -1)
+
+    printf "  ${C_KEY}%-28s${RST}${C_VAL}%s${RST}\n" "  Vendor"                "${MQR_VENDOR:-unknown}"
+    printf "  ${C_KEY}%-28s${RST}${C_VAL}%s${RST}\n" "  Device"                "${MQR_DEVICE:-unknown}"
+    printf "  ${C_KEY}%-28s${RST}${C_VAL}%s${RST}\n" "  Mesa version"          "${MQR_VER:-unknown}"
+    printf "  ${C_KEY}%-28s${RST}${C_VAL}%s${RST}\n" "  Video memory"          "${MQR_VRAM:-unknown}"
+    printf "  ${C_KEY}%-28s${RST}${C_VAL}%s${RST}\n" "  Unified memory"        "${MQR_UNIFIED:-unknown}"
+    printf "  ${C_KEY}%-28s${RST}${C_VAL}%s${RST}\n" "  Preferred profile"     "${MQR_PROFILE:-unknown}"
+    printf "  ${C_KEY}%-28s${RST}${C_VAL}%s${RST}\n" "  Max core GL"           "${MQR_MAXCORE:-unknown}"
+    printf "  ${C_KEY}%-28s${RST}${C_VAL}%s${RST}\n" "  Max compat GL"         "${MQR_MAXCOMPAT:-unknown}"
+    printf "  ${C_KEY}%-28s${RST}${C_VAL}%s${RST}\n" "  Max GLES 1"            "${MQR_MAXES1:-unknown}"
+    printf "  ${C_KEY}%-28s${RST}${C_VAL}%s${RST}\n" "  Max GLES 2/3"          "${MQR_MAXES23:-unknown}"
+
+    # ── memory (ATI/NV info blocks) ───────────────────────────────────────────
+    ATI_MEM=$(awk '/Memory info \(GL_ATI_meminfo\)/{found=1} found && /aux\. memory - total/{print; found=0}' <<< "$GLX" | head -1)
+    NV_TOTAL=$( awk '/Total available memory:/{print $4,$5}' <<< "$GLX" | head -1)
+    NV_AVAIL=$(  awk '/Currently available dedicated/{print $6,$7}' <<< "$GLX" | head -1)
+    if [[ -n "$NV_TOTAL" ]]; then
+        echo
+        printf "  ${C_DIM}Video memory (GL_NVX_gpu_memory_info):${RST}\n"
+        printf "  ${C_KEY}%-28s${RST}${C_VAL}%s${RST}\n" "  Total available"   "${NV_TOTAL}"
+        printf "  ${C_KEY}%-28s${RST}${C_VAL}%s${RST}\n" "  Currently avail."  "${NV_AVAIL:-unknown}"
+    fi
+
+    # ── extension count ───────────────────────────────────────────────────────
+    EXT_COUNT=$(grep -c 'GL_' <<< "$GLX_FULL" 2>/dev/null || echo 0)
+    GLX_EXT_COUNT=$(awk '/^    GLX_/{c++} END{print c+0}' <<< "$GLX_FULL")
+    echo
+    printf "  ${C_KEY}%-28s${RST}${C_VAL}%s${RST}\n" "GL extensions total"  "${EXT_COUNT}"
+    printf "  ${C_KEY}%-28s${RST}${C_VAL}%s${RST}\n" "GLX extensions"       "${GLX_EXT_COUNT}"
+
+    # ── notable capability flags ──────────────────────────────────────────────
+    echo
+    printf "  ${C_DIM}Notable capabilities (from GL extensions):${RST}\n"
+    declare -A CAPS=(
+        ["Geometry shaders"]="GL_ARB_geometry_shader4\|GL_EXT_geometry_shader"
+        ["Tessellation"]="GL_ARB_tessellation_shader"
+        ["Compute shaders"]="GL_ARB_compute_shader"
+        ["Multi-draw indirect"]="GL_ARB_multi_draw_indirect"
+        ["Shader storage (SSBO)"]="GL_ARB_shader_storage_buffer_object"
+        ["Bindless textures"]="GL_ARB_bindless_texture"
+        ["Sparse textures"]="GL_ARB_sparse_texture"
+        ["64-bit float (FP64)"]="GL_ARB_gpu_shader_fp64"
+        ["Half-float vertex"]="GL_ARB_half_float_vertex"
+        ["sRGB framebuffer"]="GL_ARB_framebuffer_sRGB\|GL_EXT_framebuffer_sRGB"
+        ["Multisample (MSAA)"]="GL_ARB_multisample"
+        ["Anisotropic filter"]="GL_EXT_texture_filter_anisotropic\|GL_ARB_texture_filter_anisotropic"
+        ["Debug output"]="GL_ARB_debug_output\|GL_KHR_debug"
+        ["Sync objects"]="GL_ARB_sync"
+        ["Timer queries"]="GL_ARB_timer_query\|GL_EXT_timer_query"
+        ["Transform feedback"]="GL_ARB_transform_feedback2"
+        ["Instanced drawing"]="GL_ARB_instanced_arrays\|GL_ARB_draw_instanced"
+        ["Conditional render"]="GL_NV_conditional_render\|GL_ARB_conditional_render_inverted"
+        ["Occlusion queries"]="GL_ARB_occlusion_query"
+        ["Direct state access"]="GL_ARB_direct_state_access"
+    )
+    # Sort keys for consistent order
+    for cap in \
+        "Geometry shaders" "Tessellation" "Compute shaders" \
+        "Shader storage (SSBO)" "64-bit float (FP64)" "Half-float vertex" \
+        "Bindless textures" "Sparse textures" "Multi-draw indirect" \
+        "Instanced drawing" "Transform feedback" "Conditional render" \
+        "Occlusion queries" "Timer queries" "Anisotropic filter" \
+        "sRGB framebuffer" "Multisample (MSAA)" "Sync objects" \
+        "Debug output" "Direct state access"; do
+        pat="${CAPS[$cap]}"
+        if grep -qE "$pat" <<< "$GLX_FULL"; then
+            printf "  ${C_OK}  ✔  ${RST}${C_VAL}%s${RST}\n" "$cap"
+        else
+            printf "  ${C_DIM}  ✘  %s${RST}\n" "$cap"
+        fi
     done
+
+elif command -v glxinfo &>/dev/null; then
+    row "glxinfo" "available but DISPLAY not set"
 fi
 
 # nvidia-smi if present
 if command -v nvidia-smi &>/dev/null; then
     echo
-    printf "  ${C_DIM}NVIDIA:${RST}\n"
-    nvidia-smi --query-gpu=name,driver_version,memory.total \
+    printf "  ${C_DIM}NVIDIA (nvidia-smi):${RST}\n"
+    nvidia-smi --query-gpu=name,driver_version,memory.total,temperature.gpu,utilization.gpu \
                --format=csv,noheader 2>/dev/null \
-    | while IFS=',' read -r name drv mem; do
-        printf "  %-30s  driver %-10s  %s\n" "${name# }" "${drv# }" "${mem# }"
+    | while IFS=',' read -r name drv mem temp util; do
+        printf "  %-30s  driver %-10s  mem %-8s  %s°C  gpu %s\n" \
+               "${name# }" "${drv# }" "${mem# }" "${temp# }" "${util# }"
     done
+fi
+
+# Vulkan info summary
+if command -v vulkaninfo &>/dev/null; then
+    echo
+    printf "  ${C_DIM}Vulkan:${RST}\n"
+    vulkaninfo --summary 2>/dev/null | grep -E 'GPU|driverVersion|apiVersion|deviceType' \
+    | sed 's/^[[:space:]]*/  /' | head -12
+fi
+
+# VA-API (video acceleration)
+if command -v vainfo &>/dev/null; then
+    echo
+    printf "  ${C_DIM}VA-API (video acceleration):${RST}\n"
+    VAINFO=$(vainfo 2>/dev/null)
+    VA_DRIVER=$(awk '/VA-API version|Driver version|vainfo:/{print; exit}' <<< "$VAINFO")
+    VA_PROFILES=$(grep -c 'VAProfile' <<< "$VAINFO" 2>/dev/null || echo 0)
+    [[ -n "$VA_DRIVER"   ]] && printf "  %s\n" "$VA_DRIVER"
+    [[ "$VA_PROFILES" -gt 0 ]] && printf "  ${C_KEY}%-28s${RST}${C_VAL}%s${RST}\n" "  Supported profiles" "$VA_PROFILES"
+fi
+
+# VDPAU
+if command -v vdpauinfo &>/dev/null; then
+    echo
+    printf "  ${C_DIM}VDPAU:${RST}\n"
+    vdpauinfo 2>/dev/null | grep -E 'VDPAU|implementation|version' | head -4 | sed 's/^/  /'
 fi
 
 # ── 7. misc useful vars ────────────────────────────────────────────────────────
