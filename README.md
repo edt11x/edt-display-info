@@ -136,7 +136,7 @@ If `nvidia-smi` is not installed a message is printed prompting installation of 
 
 - PowerShell 5.1+ (built into Windows 10/11 — no upgrade needed)
 - No additional dependencies required
-- Script uses CRLF line endings (enforced via `.gitattributes`)
+- Script is UTF-8 with BOM and CRLF line endings (both enforced via `.gitattributes`)
 
 **Optional** — richer output when these are present:
 
@@ -176,10 +176,13 @@ Set-ExecutionPolicy RemoteSigned -Scope CurrentUser
 .\display-info.ps1
 ```
 
-> `display-info.ps1` is stored with CRLF (DOS) line endings, as required by
-> Windows tools. A `.gitattributes` file enforces this so the endings are
-> preserved correctly on every `git checkout`, regardless of the cloning
-> machine's `core.autocrlf` setting.
+> **Encoding note:** `display-info.ps1` is saved as **UTF-8 with BOM** and
+> **CRLF (DOS) line endings**. The BOM is required because PowerShell 5.1
+> treats UTF-8 files *without* a BOM as Windows-1252, which corrupts
+> multi-byte characters inside strings and causes parse errors. A
+> `.gitattributes` file locks both the encoding marker and the line endings
+> so every `git checkout` delivers the file correctly, regardless of the
+> cloning machine's `core.autocrlf` setting.
 
 ## Usage
 
