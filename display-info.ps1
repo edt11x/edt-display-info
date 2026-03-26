@@ -75,6 +75,9 @@ function cmd_or([string]$cmd) {
     catch { return $false }
 }
 
+# PS5.1-compatible null-coalescing: nv $value "fallback"
+function nv($val, $fallback) { if ($null -ne $val) { $val } else { $fallback } }
+
 # ── title ─────────────────────────────────────────────────────────────────────
 Write-Host ""
 $title = "▐ display-info ▌"
@@ -89,11 +92,11 @@ $os = Get-CimInstance Win32_OperatingSystem -ErrorAction SilentlyContinue
 $cs = Get-CimInstance Win32_ComputerSystem  -ErrorAction SilentlyContinue
 
 row "Desktop environment"   "Windows Shell (explorer.exe)"
-row "OS name"               ($os.Caption ?? "unknown")
-row "OS version"            ($os.Version ?? "unknown")
-row "OS build"              ($os.BuildNumber ?? "unknown")
-row "OS architecture"       ($os.OSArchitecture ?? "unknown")
-row "Primary owner"         ($cs.PrimaryOwnerName ?? "unknown")
+row "OS name"               (nv $os.Caption "unknown")
+row "OS version"            (nv $os.Version "unknown")
+row "OS build"              (nv $os.BuildNumber "unknown")
+row "OS architecture"       (nv $os.OSArchitecture "unknown")
+row "Primary owner"         (nv $cs.PrimaryOwnerName "unknown")
 
 # Detect session type (console, RDP, virtual)
 $sessionType = "Console"
@@ -120,7 +123,7 @@ try {
         $logonTypeMap = @{2='Interactive';3='Network';4='Batch';5='Service';7='Unlock';
                           10='RemoteInteractive';11='CachedInteractive'}
         $lt = $lastLogon.Properties[8].Value
-        row "Last interactive logon type" "$lt ($($logonTypeMap[$lt] ?? 'unknown'))"
+        row "Last interactive logon type" "$lt ($(nv $logonTypeMap[$lt] 'unknown'))"
     }
 } catch {
     row "Last logon event" "not readable (needs admin)"
@@ -164,7 +167,7 @@ if ($dwmSvc) {
 $dwmDll = "$env:SystemRoot\System32\dwmapi.dll"
 if (Test-Path $dwmDll) {
     $dwmVer = (Get-Item $dwmDll).VersionInfo.ProductVersion
-    row "dwmapi.dll version"    ($dwmVer ?? "unknown")
+    row "dwmapi.dll version"    (nv $dwmVer "unknown")
 }
 
 # Aero / transparency
@@ -208,9 +211,9 @@ if ($desktopMons) {
     Write-Host ""
     Write-Host "  ${DIM}Connected monitors:${RST}"
     foreach ($mon in $desktopMons) {
-        $name   = $mon.Name ?? $mon.Description ?? "Unknown Monitor"
-        $width  = $mon.ScreenWidth  ?? "?"
-        $height = $mon.ScreenHeight ?? "?"
+        $name   = nv (nv $mon.Name $mon.Description) "Unknown Monitor"
+        $width  = nv $mon.ScreenWidth  "?"
+        $height = nv $mon.ScreenHeight "?"
         Write-Host "  $DIM$($name.PadRight(30))$RST  ${VAL}${width} x ${height}${RST}"
     }
 }
@@ -253,13 +256,13 @@ header "Graphics Hardware & DirectX"
 foreach ($vc in $vidCtrls) {
     Write-Host ""
     Write-Host "  ${DIM}Video controller: $($vc.Name)${RST}"
-    row "  Name"                ($vc.Name ?? "unknown")
-    row "  Driver version"      ($vc.DriverVersion ?? "unknown")
+    row "  Name"                (nv $vc.Name "unknown")
+    row "  Driver version"      (nv $vc.DriverVersion "unknown")
     row "  Driver date"         $(try { ([datetime]$vc.DriverDate.ToString()).ToString('yyyy-MM-dd') } catch { $vc.DriverDate })
     row "  Video RAM"           $(if ($vc.AdapterRAM) { "$([math]::Round($vc.AdapterRAM/1MB)) MB" } else { "unknown" })
-    row "  Video processor"     ($vc.VideoProcessor ?? "unknown")
-    row "  Current mode"        ($vc.VideoModeDescription ?? "unknown")
-    row "  Status"              ($vc.Status ?? "unknown")
+    row "  Video processor"     (nv $vc.VideoProcessor "unknown")
+    row "  Current mode"        (nv $vc.VideoModeDescription "unknown")
+    row "  Status"              (nv $vc.Status "unknown")
 
     # PNP device ID (shows vendor/device IDs)
     $pnp = $vc.PNPDeviceID
@@ -446,9 +449,9 @@ $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIden
               [Security.Principal.WindowsBuiltInRole]::Administrator)
 row "Running as admin"      $(if ($isAdmin) { "yes" } else { "no" })
 
-row "OS"                    ($os.Caption ?? "unknown")
-row "OS version"            ($os.Version  ?? "unknown")
-row "OS build"              ($os.BuildNumber ?? "unknown")
+row "OS"                    (nv $os.Caption "unknown")
+row "OS version"            (nv $os.Version "unknown")
+row "OS build"              (nv $os.BuildNumber "unknown")
 
 row "PowerShell version"    $PSVersionTable.PSVersion.ToString()
 row "CLR version"           $PSVersionTable.CLRVersion.ToString()
@@ -474,7 +477,7 @@ Write-Host ""
 Write-Host "  ${DIM}Relevant environment variables:${RST}"
 foreach ($v in $dispEnvVars) {
     $val = [System.Environment]::GetEnvironmentVariable($v)
-    row "  $v" ($val ?? "not set")
+    row "  $v" (nv $val "not set")
 }
 
 Write-Host ""
