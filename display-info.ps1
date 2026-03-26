@@ -62,11 +62,11 @@ function header([string]$title) {
 function row([string]$key, [string]$val, [string]$extra = "") {
     $paddedKey = $key.PadRight(28)
     if ([string]::IsNullOrEmpty($val) -or $val -eq "unknown" -or $val -eq "not found") {
-        Write-Host "  ${KEY}${paddedKey}${RST}${WARN}$( if ($val) { $val } else { 'not found' } )${RST}"
+        Write-Host "  ${KEY}${paddedKey}${RST}${WARN}$(if ($val) { $val } else { 'not found' })${RST}"
+    } elseif ($extra) {
+        Write-Host "  ${KEY}${paddedKey}${RST}${VAL}${val}${RST}  ${DIM}${extra}${RST}"
     } else {
-        $line = "  ${KEY}${paddedKey}${RST}${VAL}${val}${RST}"
-        if ($extra) { $line += "  ${DIM}${extra}${RST}" }
-        Write-Host $line
+        Write-Host "  ${KEY}${paddedKey}${RST}${VAL}${val}${RST}"
     }
 }
 
@@ -75,8 +75,8 @@ function cmd_or([string]$cmd) {
     catch { return $false }
 }
 
-# PS5.1-compatible null-coalescing: nv $value "fallback"
-function nv($val, $fallback) { if ($null -ne $val) { $val } else { $fallback } }
+# PS5.1-compatible null-coalescing: Coalesce $value "fallback"
+function Coalesce($val, $fallback) { if ($null -ne $val) { $val } else { $fallback } }
 
 # ── title ─────────────────────────────────────────────────────────────────────
 Write-Host ""
@@ -92,11 +92,11 @@ $os = Get-CimInstance Win32_OperatingSystem -ErrorAction SilentlyContinue
 $cs = Get-CimInstance Win32_ComputerSystem  -ErrorAction SilentlyContinue
 
 row "Desktop environment"   "Windows Shell (explorer.exe)"
-row "OS name"               (nv $os.Caption "unknown")
-row "OS version"            (nv $os.Version "unknown")
-row "OS build"              (nv $os.BuildNumber "unknown")
-row "OS architecture"       (nv $os.OSArchitecture "unknown")
-row "Primary owner"         (nv $cs.PrimaryOwnerName "unknown")
+row "OS name"               (Coalesce$os.Caption "unknown")
+row "OS version"            (Coalesce$os.Version "unknown")
+row "OS build"              (Coalesce$os.BuildNumber "unknown")
+row "OS architecture"       (Coalesce$os.OSArchitecture "unknown")
+row "Primary owner"         (Coalesce$cs.PrimaryOwnerName "unknown")
 
 # Detect session type (console, RDP, virtual)
 $sessionType = "Console"
@@ -123,7 +123,7 @@ try {
         $logonTypeMap = @{2='Interactive';3='Network';4='Batch';5='Service';7='Unlock';
                           10='RemoteInteractive';11='CachedInteractive'}
         $lt = $lastLogon.Properties[8].Value
-        row "Last interactive logon type" "$lt ($(nv $logonTypeMap[$lt] 'unknown'))"
+        row "Last interactive logon type" "$lt ($(Coalesce$logonTypeMap[$lt] 'unknown'))"
     }
 } catch {
     row "Last logon event" "not readable (needs admin)"
@@ -167,7 +167,7 @@ if ($dwmSvc) {
 $dwmDll = "$env:SystemRoot\System32\dwmapi.dll"
 if (Test-Path $dwmDll) {
     $dwmVer = (Get-Item $dwmDll).VersionInfo.ProductVersion
-    row "dwmapi.dll version"    (nv $dwmVer "unknown")
+    row "dwmapi.dll version"    (Coalesce$dwmVer "unknown")
 }
 
 # Aero / transparency
@@ -211,9 +211,9 @@ if ($desktopMons) {
     Write-Host ""
     Write-Host "  ${DIM}Connected monitors:${RST}"
     foreach ($mon in $desktopMons) {
-        $name   = nv (nv $mon.Name $mon.Description) "Unknown Monitor"
-        $width  = nv $mon.ScreenWidth  "?"
-        $height = nv $mon.ScreenHeight "?"
+        $name   = Coalesce (Coalesce $mon.Name $mon.Description) "Unknown Monitor"
+        $width  = Coalesce $mon.ScreenWidth  "?"
+        $height = Coalesce $mon.ScreenHeight "?"
         Write-Host "  $DIM$($name.PadRight(30))$RST  ${VAL}${width} x ${height}${RST}"
     }
 }
@@ -256,13 +256,13 @@ header "Graphics Hardware & DirectX"
 foreach ($vc in $vidCtrls) {
     Write-Host ""
     Write-Host "  ${DIM}Video controller: $($vc.Name)${RST}"
-    row "  Name"                (nv $vc.Name "unknown")
-    row "  Driver version"      (nv $vc.DriverVersion "unknown")
+    row "  Name"                (Coalesce$vc.Name "unknown")
+    row "  Driver version"      (Coalesce$vc.DriverVersion "unknown")
     row "  Driver date"         $(try { ([datetime]$vc.DriverDate.ToString()).ToString('yyyy-MM-dd') } catch { $vc.DriverDate })
     row "  Video RAM"           $(if ($vc.AdapterRAM) { "$([math]::Round($vc.AdapterRAM/1MB)) MB" } else { "unknown" })
-    row "  Video processor"     (nv $vc.VideoProcessor "unknown")
-    row "  Current mode"        (nv $vc.VideoModeDescription "unknown")
-    row "  Status"              (nv $vc.Status "unknown")
+    row "  Video processor"     (Coalesce$vc.VideoProcessor "unknown")
+    row "  Current mode"        (Coalesce$vc.VideoModeDescription "unknown")
+    row "  Status"              (Coalesce$vc.Status "unknown")
 
     # PNP device ID (shows vendor/device IDs)
     $pnp = $vc.PNPDeviceID
@@ -449,17 +449,17 @@ $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIden
               [Security.Principal.WindowsBuiltInRole]::Administrator)
 row "Running as admin"      $(if ($isAdmin) { "yes" } else { "no" })
 
-row "OS"                    (nv $os.Caption "unknown")
-row "OS version"            (nv $os.Version "unknown")
-row "OS build"              (nv $os.BuildNumber "unknown")
+row "OS"                    (Coalesce$os.Caption "unknown")
+row "OS version"            (Coalesce$os.Version "unknown")
+row "OS build"              (Coalesce$os.BuildNumber "unknown")
 
 row "PowerShell version"    $PSVersionTable.PSVersion.ToString()
 row "CLR version"           $PSVersionTable.CLRVersion.ToString()
 
 $lang = [System.Globalization.CultureInfo]::CurrentCulture
 row "Locale / culture"      "$($lang.Name) ($($lang.DisplayName))"
-row "UI culture"            [System.Globalization.CultureInfo]::CurrentUICulture.Name
-row "Timezone"              [System.TimeZoneInfo]::Local.DisplayName
+row "UI culture"            $([System.Globalization.CultureInfo]::CurrentUICulture.Name)
+row "Timezone"              $([System.TimeZoneInfo]::Local.DisplayName)
 
 # Uptime
 $bootTime = $os.LastBootUpTime
@@ -477,7 +477,7 @@ Write-Host ""
 Write-Host "  ${DIM}Relevant environment variables:${RST}"
 foreach ($v in $dispEnvVars) {
     $val = [System.Environment]::GetEnvironmentVariable($v)
-    row "  $v" (nv $val "not set")
+    row "  $v" (Coalesce$val "not set")
 }
 
 Write-Host ""
